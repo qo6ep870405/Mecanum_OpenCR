@@ -1,6 +1,6 @@
 # 麥克納姆輪全向移動機器人<br>Mecanum-wheeled Omnidirectional Mobile Robot
 
-本專案以 ROBOTIS 的嵌入式開發板 **OpenCR 1.0** 驅動四顆 **Dynamixel XH540-W150-R** 智能伺服馬達，搭配麥克納姆輪實現全向移動，並透過上位單板電腦 **NVIDIA Jetson™ TX2** 以 ROS 進行整合控制。
+本專案以 ROBOTIS 的嵌入式開發板 **OpenCR 1.0** 驅動四顆 **Dynamixel XH540-W150-R** 智能伺服馬達，搭配麥克納姆輪實現全向移動，並透過上位單板電腦 **NVIDIA Jetson™ TX2** 以 **Robot Operating System (ROS)** 進行整合控制。
 
 ## 目錄
 
