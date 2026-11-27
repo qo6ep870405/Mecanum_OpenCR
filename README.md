@@ -1,33 +1,66 @@
-# 麥克納姆輪全向移動機器人<br>Mecanum-wheeled omnidirectional mobile robot
-此project使用ROBOTICS公司的嵌入式微控制器開發板OpenCR1.0及使用其公司智能伺服馬達Dynamixel XH540-W150-R，此外使用上位單板電腦NVIDIA Jetson™ TX2實現ROS整合開發。
+# 麥克納姆輪全向移動機器人<br>Mecanum-wheeled Omnidirectional Mobile Robot
+
+本專案以 ROBOTIS 的嵌入式開發板 **OpenCR 1.0** 驅動四顆 **Dynamixel XH540-W150-R** 智能伺服馬達，搭配麥克納姆輪實現全向移動，並透過上位單板電腦 **NVIDIA Jetson™ TX2** 以 ROS 進行整合控制。
+
+## 目錄
+
+- [系統架構](#系統架構)
+- [硬體需求](#硬體需求)
+- [專案結構](#專案結構)
+- [運動學原理](#運動學原理)
+  - [逆向運動學](#1-逆向運動學)
+  - [編碼器與里程計](#2-編碼器與里程計)
+- [ROS 介面](#ros-介面)
+- [參數設定](#參數設定)
+- [安裝與使用](#安裝與使用)
+
+## 系統架構
+
+```
+ Jetson TX2 (ROS)  ──/cmd_vel, /cmd_clear──▶  OpenCR 1.0  ──TTL (Daisy chain)──▶  Dynamixel x4
+                   ◀──────/odom, /tf────────   (逆向運動學 / 里程計)  ◀──── 編碼器位置 ────
+```
+
 ## 硬體需求
-1.OpenCR1.0，負責逆向運動學計算，接收編碼器資訊更新機器人姿態。  
-2.Dynamixel XH540-W150-R x 4，伺服馬達。  
-3.麥克納姆輪(Mecanum wheel) x 4，萬向輪。  
-4.NVIDIA Jetson™ TX2，單板電腦，上位命令。  
-## 程式說明
 
-本專案的文件目錄如下：  
-- **Mecanum.ino**: 主程序，負責系統初始化與執行主邏輯。
-- **mecanum.cpp & mecanum.h**: 定義麥克納姆輪運動控制的核心功能，包括逆向運動學與編碼器計算。
-- **mecanum_ros.h**: ROS通訊定義，用於上位機命令與狀態傳輸。
-- **motor_driver.cpp & motor_driver.h**: 馬達速度寫入與編碼器位置讀取。
+| 元件 | 數量 | 用途 |
+| --- | :---: | --- |
+| OpenCR 1.0 | 1 | 逆向運動學計算、讀取編碼器並更新機器人姿態 |
+| Dynamixel XH540-W150-R | 4 | 輪驅動伺服馬達 |
+| 麥克納姆輪 (Mecanum wheel) | 4 | 全向輪 |
+| NVIDIA Jetson™ TX2 | 1 | 上位機，發送運動命令 |
 
+## 專案結構
 
-1.逆向運動學
+```
+Mecanum_OpenCR/
+├── Mecanum/
+│   ├── Mecanum.ino        # 主程式：系統初始化、ROS 通訊與主迴圈
+│   ├── mecanum.cpp/.h     # 麥克納姆輪運動控制：逆向運動學、姿態與速度更新
+│   ├── mecanum_ros.h      # ROS 節點、Subscriber / Publisher 與 TF 定義
+│   └── motor_driver.cpp/.h# Dynamixel 速度寫入與編碼器位置讀取
+└── figures/
+    └── simplified_geometry_of_mobile_robot.png
+```
+
+## 運動學原理
 
 <div align=center>
 
 ![幾何模型](/figures/simplified_geometry_of_mobile_robot.png)
 
 圖一、機器人坐標系下簡化幾何運動學模型
-<div align=left>
-如圖所示，其中 
 
-- $l_x$ 代表前輪中心點至後輪中心點之一半長度， $l_y$ 代表左右兩輪距離之一半長度 $r$ 為輪半徑。  
-- $v_x,v_y$ 分別對應機器人延 $X_R,Y_R$ 方向上的線速度，單位為 $(m/s)$ ， $ω_z$ 為機器人繞 $Z_R$ 軸方向旋轉之角速度，單位為 $(rad/s)$ 。
+</div>
 
-機器人的逆向運動學在給定 $v_x,v_y$ 及 $ω_z$ 下，求得各輪之線性速度為:
+符號定義：
+
+- $l_x$：前輪中心至後輪中心距離之一半； $l_y$：左右兩輪距離之一半； $r$：輪半徑。
+- $v_x, v_y$：機器人沿 $X_R, Y_R$ 方向的線速度 $(m/s)$ ； $ω_z$：機器人繞 $Z_R$ 軸的角速度 $(rad/s)$ 。
+
+### 1. 逆向運動學
+
+給定 $v_x, v_y$ 及 $ω_z$ ，各輪線速度為：
 
 $$
 \left\lbrace\begin{matrix}
@@ -38,9 +71,9 @@ v_4 = v_x-v_y+(l_x+l_y)\omega _z \\
 \end{matrix}\right.
 $$
 
-再由 $ω=\frac{v}{r}$ ，推算每個馬達的轉速，詳細見void Mecanum::controlMecanum(void)中的實現。
+再由 $ω=\frac{v}{r}$ 換算各馬達轉速。實作見 `Mecanum::controlMecanum()`。
 
-2.編碼器與里程計
+### 2. 編碼器與里程計
 
 $$
 \begin{bmatrix}
@@ -56,15 +89,52 @@ y(k-1) + \frac{r\sqrt{2}}{4} \left( -\cos\left(\tilde{θ}(k-1) + \frac{\Deltaθ(
 \end{bmatrix}\
 $$
 
-其中 $\Deltaθ(k)=\frac{r}{4(l_x + l_y)} \left( -\Deltaθ_{1w} + \Deltaθ_{2w} - \Deltaθ_{3w} + \Deltaθ_{4w} \right)$ ， $\tilde{θ}(k-1)=θ(k-1)+\frac{π}{4}$ 
+其中 $\Deltaθ(k)=\frac{r}{4(l_x + l_y)} \left( -\Deltaθ_{1w} + \Deltaθ_{2w} - \Deltaθ_{3w} + \Deltaθ_{4w} \right)$ ， $\tilde{θ}(k-1)=θ(k-1)+\frac{π}{4}$ 。
 
-此處實現參照void Mecanum::updatePose(void)，首先讀取各個馬達當前時間 $k$ 編碼器刻度，計算與上一時刻 $k-1$ 之間的差距，利用TICK2RAD將刻度差轉為徑度差，隨後利用上述公式更新機器人當前姿態。  
+實作見 `Mecanum::updatePose()`：
 
-3.ROS機器人作業系統
+1. 讀取各馬達在時間 $k$ 的編碼器刻度，與前一時刻 $k-1$ 相減得到刻度差。
+2. 以 `TICK2RAD` 將刻度差轉為弧度差 $\Deltaθ_{iw}$ （ $2π/4096$ rad/tick）。
+3. 代入上式更新機器人姿態 $(x, y, θ)$ 。
 
-從上層單板電腦Subscribe速度命令topic(/cmd_vel)及清除命令(/cmd_clear)，用以歸零里程計速度命令資訊，OpenCR這端Publish里程計topic(/odom)，以及TF轉換。
+## ROS 介面
 
-## 安裝與設定
-1.馬達設定:首先使用RoboPlus Manager 2.0設定每顆馬達的Baud rate,ID及將右半部(右前.右後)馬達改為reverse mode(詳細Baud rate, ID設定值參考motor_driver.h)。  
-2.馬達連接:使用菊鍊式(Daisy chain)方式串接所有馬達至OpenCR板TTL接口上。  
-3.程式燒錄:使用Arduino IDE將此程式燒錄製OpenCR板上，如何新增OpenCR開發板至Arduino IDE詳情至ROBOTICS官網翻閱。  
+OpenCR 透過 rosserial（Baud rate 115200）與上位機通訊。
+
+| 類型 | 名稱 | 訊息型別 | 說明 |
+| --- | --- | --- | --- |
+| Subscribe | `/cmd_vel` | `geometry_msgs/Twist` | 速度命令 $(v_x, v_y, ω_z)$ |
+| Subscribe | `/cmd_clear` | `std_msgs/Bool` | 歸零里程計與速度命令 |
+| Publish | `/odom` | `nav_msgs/Odometry` | 里程計資訊 |
+| TF | `odom` → `base_footprint` | — | 座標轉換 |
+
+## 參數設定
+
+| 參數 | 值 | 檔案 |
+| --- | --- | --- |
+| 輪半徑 `WHEEL_RADIUS` | 0.05 m | `mecanum.h` |
+| 半輪距 `HALF_WHEEL_TRACK` | 0.205 / 2 m | `mecanum.h` |
+| 半軸距 `HALF_WHEEL_BASE` | 0.197 / 2 m | `mecanum.h` |
+| Dynamixel Baud rate | 1,000,000 | `motor_driver.h` |
+| Protocol | 2.0 | `motor_driver.h` |
+| 控制頻率 / 更新頻率 | 30 Hz / 60 Hz | `motor_driver.h` |
+
+馬達 ID：
+
+| 位置 | ID |
+| --- | :---: |
+| 左前 | 0 |
+| 右前 | 1 |
+| 左後 | 2 |
+| 右後 | 3 |
+
+## 安裝與使用
+
+1. **馬達設定**：使用 RoboPlus Manager 2.0 設定每顆馬達的 Baud rate 與 ID（見上表），並將右側（右前、右後）馬達設為 **Reverse mode**。
+2. **馬達連接**：以菊鍊式（Daisy chain）將所有馬達串接至 OpenCR 的 TTL 接口。
+3. **程式燒錄**：以 Arduino IDE 開啟 `Mecanum/Mecanum.ino` 並燒錄至 OpenCR。新增 OpenCR 開發板至 Arduino IDE 的方式請參考 [ROBOTIS e-Manual](https://emanual.robotis.com/docs/en/parts/controller/opencr10/)。
+4. **啟動 ROS 通訊**：於 Jetson TX2 上執行
+   ```bash
+   rosrun rosserial_python serial_node.py _port:=/dev/ttyACM0 _baud:=115200
+   ```
+   之後即可發布 `/cmd_vel` 控制機器人，並訂閱 `/odom` 取得里程計資訊。
